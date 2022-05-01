@@ -1,0 +1,165 @@
+---
+title: "Economic and Weather Impacts on Human Caused Wildfire Instances"
+author: "Austin Showecker"
+date: '2022-05-01'
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE, echo=F}
+library(ggplot2)
+library(readxl)
+library(plm)
+library(estimatr)
+library(MASS)
+library(jtools)
+library(plotly)
+library(tidyr)
+library(dplyr)
+library(stargazer)
+
+Github_Data<- ("https://github.com/ShoweckerDataAnalysis/Economic-and-Weather-Impacts-on-Human-Caused-Wildfire-Instances/raw/main/Fire%20Data.xlsx")
+temp = tempfile(fileext = ".xlsx")
+download.file(Github_Data, destfile=temp, mode='wb')
+Fire_Data <- read_excel(temp, 
+                               sheet = "Data", col_types = c("text", 
+                                                                      "numeric", "numeric", "numeric", 
+                                                                      "numeric", "numeric", "numeric", 
+                                                                      "numeric", "numeric", "numeric", 
+                                                                      "numeric", "numeric", "numeric", 
+                                                                      "numeric", "numeric", "numeric",
+                                                                      "numeric"))
+
+fire_main<- na.omit(Fire_Data)
+fire_main$GDP_capita<- fire_main$GDP_All_Indus/fire_main$Population
+
+fire_main$bad_area_ratio<-  fire_main$Gov_Land_Acr/fire_main$Land_area
+
+fire_main$GDP_Per_SQR_Mile<- fire_main$GDP_All_Indus/fire_main$Land_area
+fire_main$GDP_X_Land<- fire_main$GDP_All_Indus*fire_main$Land_area
+fire_main$Percip_X_Temp<- fire_main$Max_Temp_avg_C6*fire_main$Annual_Percip
+fire_main$GDP_D_Land<- fire_main$GDP_All_Indus/fire_main$Land_area
+fire_main$C6_Interaction<- fire_main$Max_Temp_avg_C6*fire_main$Percip_avg_C6
+fire_main$Percent_Percip_C6<- fire_main$Percip_avg_C6/fire_main$Annual_Percip
+
+fire_main$Gov_sqr_MI_conv<- fire_main$Gov_Land_Acr*0.0015625
+fire_main$x<- fire_main$Gov_sqr_MI_conv/fire_main$Land_area
+
+fire_small<- fire_main[,c(1,3:4)]
+Geo_Fire<- aggregate(fire_small$Fires_Human, list(fire_small$State), FUN=sum) 
+g2<- aggregate(fire_small$Acres_Human, list(fire_small$State), FUN=sum)
+
+State<- Geo_Fire$Group.1
+Volume_Fires<- Geo_Fire$x
+Acres_Burned<- g2$x
+
+class(State)
+
+Geo_Fire<- cbind(State, Volume_Fires, Acres_Burned)
+```
+
+# Introduction
+
+Wildfire cost the US economy billions of dollars every year to fight and to the general economy. Then there is the threat of death and health damage to citizens. In addition to theses human felt costs, there are the costs to the environment due to lost forests and carbon output. Some amount of wildfire is natural and will happen without human intervention, then there are those caused by humans. 
+
+The goal of this report is to look at the relationship of some high-level weather and economic factors on human caused fires. The thought being, with better understanding of human caused fires, we may be able to get a better understanding of what we can do to mitigate the wildfire damage inflicted upon ourselves. 
+
+
+
+
+```{r, include=FALSE, echo=F}
+summary(cars)
+```
+
+# Data
+
+The data used in this analysis was collected from a variety of sources of publicly available sources. The panel data set created from this collection is across all 50 states over the years 2018 through 2021. This time period is in part due to methodology of record keeping by nifc.gov. In years prior to 2018 the number of fires and acres were nut broken into the same level of granularity, making it impossible to create a longer data set without changing data sources. The National Interagency Fire Center (nifc) website was used to collect the fire statistics used in this analysis. The weather data used was collected from the National Oceanic and Atmospheric Administration (NOAA) website for collecting precipitation and temperature statistics for 49 of 50 states over the 4-year period. Hawaii data was not available within NOAA’s tool, resulting in Hawaii not being part of this analysis.  Land area statistics were gathered from a data set originally from the National Wilderness Institute but pulled from ncrm.org. It should be noted that that with this time span and this high level of aggregation, that further research should be done to drill down further into the trends found in this report.
+
+
+# Data Exploration and analysis
+
+Some of the ideas leading to this particular analysis were to see if some high-level variables related to human behavior could be shown to have a link to human caused wild fire. Part of this analysis would need to take into consideration factors related to weather as it is common knowledge that dry things catch fire easier than lush green things. A variety of things have been said about causes for some of the large fires in recent years. 
+
+One example of such theories is that states that have more federally government managed land have more fires. To analyze this idea the number of square miles owned by federal or state governments was included in the correlation matrix below (Table 1). We find that it has a very low correlation with both the number of fires caused by humans and number of acres burned caused by humans.
+
+Another human related variable that has been mentioned in other work and as a potential cause of wildfire is population density. This variable was also included in the below correlation matrix (Table 1) and we find that it is not correlated with either the number of fires caused by humans and number of acres burned caused by humans.
+
+One variable that I have not encountered as being used in fire analysis is GDP. I felt this would be an interesting variable to use as it might be an indicator of things such as how much money is available to manage land, how developed a region is, and perhaps how well off the people in the region are. Multiple variables were created to measure these ideas. GDP for all industries was collected and used to create GDP per capita, GDP per square mile, and an interaction term GDP * Land Area. All of these variables were included in Table 1. The both the over all level of GDP and the interaction term were highly correlated with fires caused by humans and number of acres burned caused by humans, with the interaction being higher of the two. 
+
+Finally the weather variables were included. The variables collected include the annual precipitation, the precipitation in the center six months of the year (April - September), the annual average temperature, and the Max temperature average for the center six months of the year (April - September). I was actually surprised by the results from these variables. They were not as highly correlated as I would have expected. This may be due to the aggregated level at which they were collected. There were some worth while correlations within these variables, though they did not both apply to the two measures of interest. All of these measures were included in Table 1.
+
+```{r, include=T, echo=FALSE, results='asis'}
+FireV_Correlation<- cor(fire_main[,c(3, 4,11:16,18,20:21,24,26,9)])
+stargazer(FireV_Correlation, type="html", title = "Table 1")
+
+
+```
+
+After viewing these correlation measures some visualizations were created to better understand the variables that appear to be of most interest.
+
+```{r, include=T, echo=FALSE, results='asis'}
+plot_ly(data = fire_main, x = ~Fires_Human, y = ~GDP_X_Land, 
+        type = "scatter",
+        color = ~Max_Temp_avg_C6)
+
+plot_ly(data = fire_main, x = ~Acres_Human, y = ~GDP_X_Land, 
+        type = "scatter",
+        color = ~Percip_avg_C6)
+```
+
+To further zero in on what variables are linked to these two metrics, volume of fires caused by humans and acres burned caused by fires, some regressions were fit using the above variables. 
+
+```{r, include=T, echo=FALSE, results='asis'}
+fire_model_Hum_Vol2<- lm(Fires_Human ~ GDP_X_Land + Max_Temp_avg_C6, data = fire_main)
+
+
+stargazer(fire_model_Hum_Vol2, header=FALSE,
+          title="Volume of Fires - Human Caused", type='html', digits = 10,
+          dep.var.caption  = "Volume of Fires",
+          dep.var.labels.include = FALSE,
+          model.names = FALSE,
+          model.numbers = T,
+          column.separate = c(1,1, 1)
+          )
+```
+
+```{r, include=T, echo=FALSE, results='asis'}
+fire_model_Hum_Acr2<- lm(Acres_Human ~ GDP_X_Land + Percip_avg_C6, data = fire_main)
+
+
+stargazer(fire_model_Hum_Acr2, header=FALSE,
+          title="Acres Burned - Human Caused", type='html', digits = 10,
+          dep.var.caption  = "Acres Burned",
+          dep.var.labels.include = FALSE,
+          model.names = FALSE,
+          model.numbers = T,
+          column.separate = c(1,1, 1)
+          )
+```
+
+
+# Conclusion
+
+After looking at these variables we find some interesting results. 
+
+**Weather is linked to human caused fire but the relationship is not as tight as you might think.**
+
+The weather variables used in this analysis did not have that high of correlation values and when put into regressions only one was is significant at a time. When predicting number of fires temperature was a significant factor. When predicting acres burned, precipitation was a significant factor.
+
+**Population density and who owns the land does not appear to be a factor.**
+
+The variables appeared to have low correlations to the target variables and when used in regression, did not show up as signigifant.
+
+**The interaction between income and amount of land is significant.**
+
+This variable combines two variables is interesting and should be researched further. GDP as a stand alone variable did have a high correlation to the target variables but it was more correlated when multiplied by the land area of the state. This may simply be because the more land a state has the more possible area for a fire to occur, but when land area on its own in the correlation matrix did not have a high value. This interaction term may represent the way in which the land is developed. In both predicting the number of fires and the acres burned, this interaction showed a positive relationship. This could be explored further with other measures of land and economic development perhaps by looking at things like what percent of land is used for agriculture, or what percent of land is forested.
+
+
+
+
+
+
+
+
+
